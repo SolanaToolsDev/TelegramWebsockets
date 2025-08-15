@@ -1,0 +1,13 @@
+[Unit]
+Description=SolTools Token Cache Timer - Run every 4 minutes
+Documentation=https://tzen.ai
+Requires=soltools-cache.service
+
+[Timer]
+OnBootSec=30sec
+OnUnitActiveSec=4min
+AccuracySec=10sec
+Persistent=true
+
+[Install]
+WantedBy=timers.target

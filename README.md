@@ -1,6 +1,6 @@
 # SolTools Test Bot (@soltoolsdexpaidbot)
 
-A simple Telegram test bot for testing keyboard and button functionality.
+A Telegram test bot with integrated Solana token caching and enrichment functionality.
 
 ## Features
 
@@ -8,6 +8,10 @@ A simple Telegram test bot for testing keyboard and button functionality.
 - 🧪 Test button functionality for development
 - 📱 Interactive inline keyboards
 - 🔧 Simple webhook-based architecture
+- ⚡ Solana token caching from DexScreener API
+- 🔬 Token enrichment with Helius API (names & tickers)
+- 📊 Redis caching with automatic expiration
+- ⏰ Automated background token updates via systemd
 
 ## Setup
 
@@ -23,9 +27,20 @@ A simple Telegram test bot for testing keyboard and button functionality.
 Edit the `.env` file and replace the placeholder values:
 
 ```env
+# Telegram Bot Configuration
 BOT_TOKEN=your_actual_bot_token_here
 WEBHOOK_URL=https://your-domain.com/webhook
+
+# Server Configuration
 PORT=3000
+
+# Redis Configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+# REDIS_PASSWORD=your_redis_password_here
+
+# Helius API Configuration
+HELIUS_API_KEY=your_helius_api_key
 ```
 
 ### 3. Install Dependencies
@@ -34,7 +49,18 @@ PORT=3000
 npm install
 ```
 
-### 4. Set up Webhook (Production)
+### 4. Install Redis (Required for token caching)
+
+```bash
+# Ubuntu/Debian
+sudo apt update && sudo apt install redis-server
+
+# Start Redis service
+sudo systemctl start redis
+sudo systemctl enable redis
+```
+
+### 5. Set up Webhook (Production)
 
 For production deployment, set up the webhook:
 
@@ -43,7 +69,7 @@ For production deployment, set up the webhook:
 npm run setup-webhook
 ```
 
-### 5. Run the Bot
+### 6. Run the Bot
 
 **Using the Management Script (Recommended):**
 ```bash
@@ -101,6 +127,53 @@ journalctl -u soltools-dexbot -f
 - `/start` - Show main menu with test options
 - `/help` - Show available commands and usage examples
 - `/test` - Display test menu with 4 test buttons
+
+## Token Caching & Enrichment
+
+The bot includes a powerful token caching system that fetches Solana tokens from DexScreener and enriches them with metadata from Helius API.
+
+### Manual Token Operations
+
+```bash
+# Fetch and cache basic token data only
+node cache-solana-tokens.js fetch
+
+# Fetch, enrich with names/tickers, and cache
+node cache-solana-tokens.js enrich
+
+# Test mode (process first 3 tokens)
+node cache-solana-tokens.js test
+
+# Limit enrichment to specific number
+node cache-solana-tokens.js enrich 10
+
+# View basic cached tokens
+node cache-solana-tokens.js get
+
+# View enriched tokens as JSON
+node cache-solana-tokens.js enriched
+
+# List enriched tokens with names and tickers
+node cache-solana-tokens.js list
+
+# Show cache status and info
+node cache-solana-tokens.js info
+```
+
+### Automated Token Updates
+
+The system includes a systemd service that automatically updates token data every 4 minutes:
+
+```bash
+# Check service status
+sudo systemctl status soltools-cache.service
+
+# View service logs
+sudo journalctl -u soltools-cache.service -f
+
+# Restart service
+sudo systemctl restart soltools-cache.service
+```
 
 ## Test Functionality
 
