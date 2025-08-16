@@ -154,6 +154,64 @@ node cache-solana-tokens.js cleanup       # Remove expired data
 node cache-solana-tokens.js stats         # Performance metrics
 ```
 
+### Automated Token Updates with Systemd
+
+The system includes systemd service and timer files for automated token data updates every 4 minutes.
+
+#### Setup Systemd Service
+
+```bash
+# Copy systemd files to system directory
+sudo cp soltools-cache.* /etc/systemd/system/
+
+# Reload systemd daemon
+sudo systemctl daemon-reload
+
+# Enable and start the timer (runs every 4 minutes)
+sudo systemctl enable --now soltools-cache.timer
+
+# Check timer status
+systemctl status soltools-cache.timer
+```
+
+#### Systemd Service Details
+
+- **Service**: `soltools-cache.service` - Runs the enrichment job
+- **Timer**: `soltools-cache.timer` - Triggers service every 4 minutes
+- **Schedule**: Runs 30 seconds after boot, then every 4 minutes
+- **User**: Runs as root (adjust paths in service file if needed)
+- **Logs**: Available via `journalctl -u soltools-cache.service`
+
+#### Management Commands
+
+```bash
+# Check timer status
+systemctl status soltools-cache.timer
+
+# Check service status
+systemctl status soltools-cache.service
+
+# View recent logs
+journalctl -u soltools-cache.service -f
+
+# Manually trigger a cache update
+systemctl start soltools-cache.service
+
+# Disable automatic updates
+systemctl disable soltools-cache.timer
+
+# Stop the timer
+systemctl stop soltools-cache.timer
+```
+
+#### Timer Configuration
+
+The timer runs:
+- **On Boot**: 30 seconds after system startup
+- **Interval**: Every 4 minutes
+- **Accuracy**: ±10 seconds
+- **Persistent**: Resumes schedule after system restart
+
 ### Example Workflow
 ```bash
 # 1. Fetch basic token data
