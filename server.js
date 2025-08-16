@@ -1,9 +1,19 @@
 require('dotenv').config();
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+const { getEnrichedTokens, getCachedSolanaTokens } = require('./cache-solana-tokens');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// SQLite configuration
+const DB_PATH = path.join(__dirname, 'tokens.db');
+
+// Initialize SQLite database
+let db = null;
+let dbConnected = false;
 
 // Initialize bot with webhook
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: false });
@@ -40,6 +50,47 @@ app.get('/health', (req, res) => {
 });
 
 // =============================================================================
+// SQLITE FUNCTIONS
+// =============================================================================
+
+// Ensure database connection
+async function ensureDB() {
+  if (!dbConnected) {
+    return new Promise((resolve, reject) => {
+      db = new sqlite3.Database(DB_PATH, (err) => {
+        if (err) {
+          console.error('❌ Error opening database:', err.message);
+          reject(err);
+        } else {
+          console.log('🔗 Connected to SQLite database');
+          dbConnected = true;
+          resolve();
+        }
+      });
+    });
+  }
+}
+
+// Get data from SQLite
+function dbGet(table, key) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT data FROM ${table} WHERE key_name = ? AND (expires_at IS NULL OR expires_at > datetime('now'))`,
+      [key],
+      (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row ? JSON.parse(row.data) : null);
+        }
+      }
+    );
+  });
+}
+
+
+
+// =============================================================================
 // TELEGRAM COMMAND HANDLERS
 // =============================================================================
 
@@ -62,29 +113,91 @@ function handleMessage(msg) {
   }
 }
 
-function handleStartCommand(chatId, userId) {
+async function handleStartCommand(chatId, userId) {
   console.log(`🚀 /start command from user ${userId}`);
   
-  const keyboard = {
-    inline_keyboard: [
-      [
-        { text: '🧪 Test Buttons', callback_data: 'test_menu' }
-      ],
-      [
-        { text: '❓ Help', callback_data: 'help_menu' }
+  try {
+    // Get all basic tokens from cache (all tokens from DexScreener)
+    const basicData = await getCachedSolanaTokens();
+    
+    // Send welcome message
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: '🧪 Test Buttons', callback_data: 'test_menu' }
+        ],
+        [
+          { text: '❓ Help', callback_data: 'help_menu' }
+        ]
       ]
-    ]
-  };
-  
-  bot.sendMessage(chatId, 
-    '🤖 Welcome to SolTools Test Bot!\n\n' +
-    'This bot is for testing functionality only.',
-    { reply_markup: keyboard }
-  ).then(() => {
+    };
+    
+    await bot.sendMessage(chatId, 
+      '🤖 Welcome to SolTools Test Bot!\n\n' +
+      'This bot is for testing functionality only.',
+      { reply_markup: keyboard }
+    );
+    
+    // Send all tokens in one message
+    if (basicData && basicData.tokens && basicData.tokens.length > 0) {
+      const tokens = basicData.tokens;
+      
+      if (tokens.length > 0) {
+        // Build the message with all tokens
+        let message = '🏆 **All Cached Solana Tokens:**\n\n';
+        
+        tokens.forEach((token, index) => {
+          const rank = index + 1;
+          const name = token.description ? token.description.substring(0, 40) : 'Unknown';
+          const address = token.tokenAddress ? token.tokenAddress.substring(0, 8) + '...' : 'N/A';
+          
+          message += `${rank}. **${name}** - ${address}\n`;
+        });
+        
+        message += `\n📊 Total: ${tokens.length} tokens\n`;
+        message += `🕐 Last updated: ${new Date(basicData.timestamp).toLocaleString()}`;
+        
+        // Send the complete message
+        await bot.sendMessage(chatId, message, { 
+          parse_mode: 'Markdown',
+          disable_web_page_preview: true // Prevent link previews
+        });
+        
+        console.log(`✅ Sent ${tokens.length} tokens to user ${userId}`);
+      } else {
+        await bot.sendMessage(chatId, 
+          '📊 No tokens found in cache. Please try again later.'
+        );
+      }
+    } else {
+      await bot.sendMessage(chatId, 
+        '📊 No token data available at the moment. Please try again later.'
+      );
+    }
+    
     console.log(`✅ /start response sent to user ${userId}`);
-  }).catch((error) => {
+    
+  } catch (error) {
     console.error(`❌ Error sending /start response to user ${userId}:`, error);
-  });
+    
+    // Send fallback message
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: '🧪 Test Buttons', callback_data: 'test_menu' }
+        ],
+        [
+          { text: '❓ Help', callback_data: 'help_menu' }
+        ]
+      ]
+    };
+    
+    await bot.sendMessage(chatId, 
+      '🤖 Welcome to SolTools Test Bot!\n\n' +
+      'This bot is for testing functionality only.',
+      { reply_markup: keyboard }
+    );
+  }
 }
 
 function handleHelpCommand(chatId, userId) {
@@ -250,6 +363,13 @@ bot.on('polling_error', (error) => {
 // SERVER STARTUP
 // =============================================================================
 
+// Connect to SQLite on startup
+ensureDB().then(() => {
+  console.log('🔗 Connected to SQLite database');
+}).catch((error) => {
+  console.error('❌ Failed to connect to SQLite database:', error);
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🤖 Bot: @soltoolsdexpaidbot`);
@@ -257,7 +377,36 @@ app.listen(PORT, () => {
 });
 
 // Graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down gracefully...');
+  
+  // Close database connection
+  if (db) {
+    db.close((err) => {
+      if (err) {
+        console.error('❌ Error closing database:', err.message);
+      } else {
+        console.log('🔗 Database connection closed');
+      }
+    });
+  }
+  
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n🛑 Received SIGTERM, shutting down gracefully...');
+  
+  // Close database connection
+  if (db) {
+    db.close((err) => {
+      if (err) {
+        console.error('❌ Error closing database:', err.message);
+      } else {
+        console.log('🔗 Database connection closed');
+      }
+    });
+  }
+  
   process.exit(0);
 });

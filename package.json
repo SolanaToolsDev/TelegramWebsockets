@@ -15,10 +15,13 @@
   "license": "ISC",
   "dependencies": {
     "axios": "^1.11.0",
+    "bottleneck": "^2.19.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "node-telegram-bot-api": "^0.66.0",
-    "redis": "^5.8.1"
+    "redis": "^5.8.1",
+    "sqlite3": "^5.1.7",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
